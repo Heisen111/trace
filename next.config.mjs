@@ -1,4 +1,8 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ["@xenova/transformers", "onnxruntime-node"],
+  },
+};
 
 export default nextConfig;

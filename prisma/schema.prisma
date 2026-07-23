@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Trace {
+  id          String       @id @default(cuid())
+  question    String
+  model_config Json
+  created_at  DateTime     @default(now())
+  result      TraceResult?
+}
+
+model TraceResult {
+  trace_id          String @id
+  answer_text       String
+  token_confidence  Json
+  claims            Json
+  consensus_answers Json
+  ablation_results  Json
+  trace             Trace  @relation(fields: [trace_id], references: [id])
+}

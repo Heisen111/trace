@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trace Dashboard — LLM Response Inspector
 
-## Getting Started
+A Next.js app that streams LLM responses token-by-token and analyzes them from multiple angles: per-token confidence coloring, claim extraction with risk scoring, consensus clustering (multi-run), and ablation testing (segment removal).
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+User → page.tsx → /api/trace (SSE) → Ollama → SQLite
+                         ↓
+              ┌── Answer (raw text)
+              ├── Walkthrough (colored tokens)
+              ├── Claims (extracted facts + risk)
+              ├── Consensus (3× run → shared/unique claims)
+              └── Ablation (segment removal → load-bearing flags)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Stack:** Next.js 14 App Router, TypeScript, Tailwind CSS, Prisma 7 + SQLite
+- **LLM Backend:** Ollama (default `http://localhost:11434/v1/chat/completions`), model `qwen2.5:3b`
+- **Embeddings:** Transformers.js (`all-MiniLM-L6-v2`) runs server-side for cosine similarity
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Prerequisites
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. [Ollama](https://ollama.com) installed and running
+2. Pull a model: `ollama pull qwen2.5:3b`
 
-## Learn More
+## Quick Start
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# 1. Install dependencies
+npm install
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 2. Run Prisma migration + start dev server (one command)
+npm run setup
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This creates the SQLite database (`prisma/dev.db`) and starts the dev server at `http://localhost:3000`.
 
-## Deploy on Vercel
+If you prefer separate steps:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npx prisma migrate dev
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Main page — ask a question, see the streamed response, inspect via 5 tabs |
+| `/history` | Past traces stored in SQLite, sorted by date with risk badges |
+| `/trace/[id]` | Full trace detail — re-run consensus/ablation, export as HTML |
+| `/batch` | Paste many questions, run sequentially, see aggregate stats |
+
+## Tabs
+
+| Tab | What it shows |
+|-----|---------------|
+| **Answer** | Raw model response as plain text |
+| **Walkthrough** | Every token colored by log-probability confidence. Hover to see alternatives. |
+| **Claims** | Sentences extracted as claims with risk scores (safe/low/medium/high). Low-confidence tokens and consensus disagreement raise risk. |
+| **Consensus** | Runs the same question 3 more times at temperature 0.8, clusters sentences by embedding similarity → shared, partial, and unique claims. |
+| **Ablation** | Removes each segment of the question one at a time, reruns the model, and measures how much the answer changes (embedding similarity + LLM-as-judge). Load-bearing segments are flagged. |
+
+## Scripts
+
+```bash
+npm run setup    # Prisma migrate + dev server (one command)
+npm run dev      # Start dev server only
+npm run build    # Production build
+npm run lint     # Run ESLint
+```
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── trace/route.ts         # SSE streaming endpoint
+│   │   ├── consensus/route.ts     # Multi-run consensus
+│   │   ├── ablation/route.ts      # Segment ablation
+│   │   ├── traces/route.ts        # List all traces
+│   │   └── traces/[id]/route.ts   # Single trace detail
+│   ├── page.tsx                   # Main dashboard
+│   ├── history/page.tsx           # History list
+│   ├── trace/[id]/page.tsx        # Trace detail page
+│   └── batch/page.tsx             # Batch mode
+├── components/
+│   ├── TraceDisplay.tsx           # Token walkthrough
+│   ├── ClaimsView.tsx             # Claim cards
+│   ├── ConsensusView.tsx          # Consensus buckets
+│   ├── AblationView.tsx           # Ablation cards
+│   ├── ErrorBoundary.tsx          # Error boundary
+│   ├── LoadingSkeleton.tsx        # Skeleton loaders
+│   └── OnboardingGuide.tsx        # First-time help
+├── lib/
+│   ├── claims.ts                  # Claim extraction + risk
+│   ├── consensus.ts               # Consensus logic
+│   ├── ablation.ts                # Ablation logic
+│   ├── embedding.ts               # Transformers.js pipeline
+│   ├── batch.ts                   # Batch processing
+│   ├── export.ts                  # HTML export
+│   ├── prisma.ts                  # Prisma client
+│   └── types.ts                   # Shared types
+└── prisma/
+    └── schema.prisma              # Trace + TraceResult models
+```
